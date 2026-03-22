@@ -614,7 +614,12 @@ app.post('/export-docx', (req, res) => {
     }
 
     try {
-        const sv = v => (v && v!=='N/A' && v!=='Student' && v!=='Not Available') ? v : '';
+        const sv = v => {
+            if (!v) return '';
+            const low = String(v).trim().toLowerCase();
+            if (['n/a','na','not available','not specified','not found','none','unknown','student',''].includes(low)) return '';
+            return String(v).trim();
+        };
         const isAnon = !sv(studentName);
         const displayName = isAnon ? 'Anonymous Submission' : sv(studentName);
         const docType = workableTask?.document_type || 'Individual Report';
