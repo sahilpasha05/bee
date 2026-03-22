@@ -583,8 +583,13 @@ app.post('/export-docx', (req, res) => {
     function parseContent(raw) {
         const els = [];
         for (const para of (raw||'').split(/\n\n+/)) {
-            const t = para.trim();
+            let t = para.trim();
             if (!t) continue;
+            // Strip any remaining markdown bold **text**
+            t = t.replace(/\*\*(.+?)\*\*/g, '$1');
+            // Strip markdown headers
+            t = t.replace(/^#{1,4}\s+/, '');
+
             if (/^Equation\s+\d+\s*[—–\-]/i.test(t) || t.startsWith('[EQUATION]')) {
                 els.push(new Paragraph({
                     alignment:AlignmentType.CENTER, spacing:{line:LSPACING,before:160,after:160},
@@ -597,7 +602,10 @@ app.post('/export-docx', (req, res) => {
                 if (tbl) { els.push(tbl); els.push(blk(60,60)); continue; }
             }
             if (t.startsWith('## ')) { els.push(h2(t.replace(/^##\s*/,''))); continue; }
+            // Numbered subheading: "3.1 Title" or "3.1  Title"
             if (/^\d+\.\d+[\s]+\w/.test(t) && t.length<120) { els.push(h2(t)); continue; }
+            // Also catch "1. Title" style (single-level numbered heading from GPT)
+            if (/^\d+\.\s+[A-Z]\w/.test(t) && t.length<120 && !t.includes('.') ) { els.push(h2(t)); continue; }
             if (/^Source:/i.test(t)) { els.push(mkP([tr(t,{size:SZ_XS,italic:true,color:'666666'})],{left:true,before:0,after:120})); continue; }
             if (/^(Table|Figure)\s+\d+/i.test(t) && t.length<200) { els.push(mkP([tr(t,{size:SZ_SM,bold:true,color:'333333'})],{left:true,before:80,after:40})); continue; }
             els.push(mkP(t));
@@ -619,9 +627,11 @@ app.post('/export-docx', (req, res) => {
         const refStyle = workableTask?.referencing_style || 'Harvard';
 
         // ── COVER PAGE ────────────────────────────────────────────────
+        const uniName = sv(university);
         const cover = [
             blk(), blk(),
-            mkP([tr((university||'UNIVERSITY').toUpperCase(),{bold:true,size:SZ_H1+6,color:'1F3864'})],{center:true,after:40}),
+            // University — only show if actually provided, otherwise skip
+            ...(uniName ? [mkP([tr(uniName.toUpperCase(),{bold:true,size:SZ_H1+6,color:'1F3864'})],{center:true,after:40})] : []),
             ...(schoolDept ? [mkP([tr(schoolDept,{size:FSIZE_HX,color:'444444'})],{center:true,after:200})] : [blk(0,160)]),
             blk(), blk(),
             mkP([tr(docType.toUpperCase(),{bold:true,size:SZ_H1+10,color:'1F3864'})],{center:true,after:60}),
@@ -635,7 +645,7 @@ app.post('/export-docx', (req, res) => {
             mkP([tr(`Word Count: ${totalWordCount?totalWordCount.toLocaleString():'0'} (excluding cover, TOC, tables, figures, and references)`,
                 {size:FSIZE_HX-2,bold:true,color:'333333'})],{center:true,after:40}),
             blk(),
-            mkP([tr(`${refStyle} Referencing  |  ${FONT} ${FSIZE_HX/2}pt  |  ${parseFloat(lineSpacing)||1.5} Line Spacing  |  ${parseFloat(marginsCm)||2.54}cm margins  |  A4`,
+            mkP([tr(`${refStyle} Referencing  |  ${FONT} ${FSIZE_HX/2}pt  |  1.5 Line Spacing  |  A4`,
                 {size:SZ_XS,italic:true,color:'AAAAAA'})],{center:true,after:0}),
             new Paragraph({ children: [new PageBreak()] })
         ];
@@ -693,7 +703,7 @@ app.post('/export-docx', (req, res) => {
                     alignment:AlignmentType.RIGHT,
                     border:{bottom:{style:BorderStyle.SINGLE,size:4,color:'1F3864',space:4}},
                     spacing:{before:0,after:80},
-                    children:[tr(`${sv(university)||''}  |  ${docType}`,{size:SZ_XS,italic:true,color:'666666'})]
+                    children:[tr(`${uniName ? uniName+'  |  ' : ''}${docType}`,{size:SZ_XS,italic:true,color:'666666'})]
                 })]})},
                 footers:{default:new Footer({children:[new Paragraph({
                     alignment:AlignmentType.CENTER,
