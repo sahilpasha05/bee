@@ -23,7 +23,9 @@ app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
 // ── /extract-text ─────────────────────────────────────────────────────────────
 app.post('/extract-text', (req, res) => {
-    const { fileExt, base64Data, executionId } = req.body;
+    const { fileExt, base64Data } = req.body;
+    // SECURITY: sanitize executionId — alphanumeric + underscore/dash only
+    const executionId = String(req.body.executionId || '').replace(/[^a-zA-Z0-9_\-]/g, '');
     if (!base64Data) return res.json({ stdout: '', stderr: 'No data', returncode: 1 });
     const inputPath = `/tmp/brief_${executionId}.${fileExt}`;
     try {
@@ -76,7 +78,9 @@ app.post('/deps', (req, res) => res.json({ stdout: 'OK', stderr: '', returncode:
 
 // ── /generate-charts — FULLY DYNAMIC ──────────────────────────────────────────
 app.post('/generate-charts', (req, res) => {
-    const { executionId, docSections, workableTask, fullDocumentText, chartData } = req.body;
+    const { docSections, workableTask, fullDocumentText, chartData } = req.body;
+    // SECURITY: sanitize executionId — alphanumeric + underscore/dash only
+    const executionId = String(req.body.executionId || '').replace(/[^a-zA-Z0-9_\-]/g, '');
     const workDir = `/tmp/charts_${executionId}`;
     // Always start fresh — delete any leftover folder from a previous attempt
     try { fs.rmSync(workDir, { recursive: true, force: true }); } catch(e) {}
@@ -280,7 +284,7 @@ for ctype, spec in ai_types.items():
             w = min(0.15, 0.8/max(len(criteria),1))
             bar_colors = [BLUE,GREEN,ORANGE,PURPLE,RED,TEAL,'#F39C12','#1ABC9C']
             for i,(crit,vals) in enumerate(criteria.items()):
-                vals = vals[:len(markets)]  # safety
+                vals = vals[:len(markets)]
                 while len(vals) < len(markets): vals.append(5)
                 ax.bar(x+i*w, vals, w, label=crit, color=bar_colors[i%len(bar_colors)], alpha=0.85, edgecolor='white')
             totals = [sum(criteria[c][j] if j<len(criteria[c]) else 0 for c in criteria) for j in range(len(markets))]
@@ -426,7 +430,7 @@ for ctype, spec in ai_types.items():
             plt.savefig(p,dpi=180,bbox_inches='tight',facecolor='#FDFEFE'); plt.close()
             charts_generated.append(('resource_loading',p))
 
-        # ── IMPLEMENTATION ROADMAP TABLE (renders as image) ──────────────
+        # ── IMPLEMENTATION ROADMAP TABLE ──────────────────────────────────
         elif ctype == 'implementation_roadmap':
             rows_data = data.get('rows', [])
             headers = data.get('headers', ['Recommendation','Phase 1 (0-6m)','Phase 2 (6-18m)','Phase 3 (18-36m)','Feasibility','Acceptability','Vulnerability'])
@@ -443,25 +447,14 @@ for ctype, spec in ai_types.items():
             fig, ax = plt.subplots(figsize=(fig_w, fig_h))
             ax.axis('off'); fig.patch.set_facecolor('#FDFEFE')
             col_w = [1.0/n_cols] * n_cols
-            tbl = ax.table(
-                cellText=rows_data,
-                colLabels=headers,
-                cellLoc='center', loc='center',
-                colWidths=col_w
-            )
-            tbl.auto_set_font_size(False)
-            tbl.set_fontsize(8)
-            tbl.scale(1, 1.8)
+            tbl = ax.table(cellText=rows_data, colLabels=headers, cellLoc='center', loc='center', colWidths=col_w)
+            tbl.auto_set_font_size(False); tbl.set_fontsize(8); tbl.scale(1, 1.8)
             for (r, c), cell in tbl.get_celld().items():
                 if r == 0:
-                    cell.set_facecolor(NAVY)
-                    cell.set_text_props(color='white', fontweight='bold', fontsize=8)
-                elif r % 2 == 0:
-                    cell.set_facecolor('#EBF0F8')
-                else:
-                    cell.set_facecolor('#FFFFFF')
+                    cell.set_facecolor(NAVY); cell.set_text_props(color='white', fontweight='bold', fontsize=8)
+                elif r % 2 == 0: cell.set_facecolor('#EBF0F8')
+                else: cell.set_facecolor('#FFFFFF')
                 cell.set_edgecolor('#BDC3C7')
-                # colour FAV columns
                 if r > 0 and c >= n_cols - 3:
                     val = (rows_data[r-1][c] if c < len(rows_data[r-1]) else '').strip().lower()
                     if 'high' in val: cell.set_facecolor('#D5F5E3')
@@ -483,26 +476,22 @@ for ctype, spec in ai_types.items():
             angles += angles[:1]
             scores_plot = [s/max_val for s in scores] + [scores[0]/max_val]
             fig, ax = plt.subplots(figsize=(9, 9), subplot_kw=dict(polar=True))
-            fig.patch.set_facecolor('#FDFEFE')
-            ax.set_facecolor('#F8F9FA')
+            fig.patch.set_facecolor('#FDFEFE'); ax.set_facecolor('#F8F9FA')
             ax.plot(angles, scores_plot, 'o-', linewidth=2.5, color=BLUE)
             ax.fill(angles, scores_plot, alpha=0.2, color=BLUE)
-            ax.set_xticks(angles[:-1])
-            ax.set_xticklabels(axes_labels, size=10, fontweight='bold', color=NAVY)
-            ax.set_ylim(0, 1)
-            ax.set_yticks([0.2,0.4,0.6,0.8,1.0])
+            ax.set_xticks(angles[:-1]); ax.set_xticklabels(axes_labels, size=10, fontweight='bold', color=NAVY)
+            ax.set_ylim(0, 1); ax.set_yticks([0.2,0.4,0.6,0.8,1.0])
             ax.set_yticklabels([f'{int(v*max_val)}' for v in [0.2,0.4,0.6,0.8,1.0]], size=8, color='gray')
             ax.grid(color='gray', linestyle='--', linewidth=0.5, alpha=0.5)
             for angle, score, label in zip(angles[:-1], scores, axes_labels):
-                ax.annotate(str(score), xy=(angle, score/max_val), fontsize=9, fontweight='bold',
-                            color=NAVY, ha='center', va='bottom')
+                ax.annotate(str(score), xy=(angle, score/max_val), fontsize=9, fontweight='bold', color=NAVY, ha='center', va='bottom')
             ax.set_title(title, size=12, fontweight='bold', pad=20, color=NAVY)
             plt.tight_layout()
             p = f"{work_dir}/ux_principles_radar.png"
             plt.savefig(p, dpi=180, bbox_inches='tight', facecolor='#FDFEFE'); plt.close()
             charts_generated.append(('ux_principles_radar', p))
 
-        # ── GENERIC TABLE RENDERER (interaction_paradigm, ethical_matrix, heuristic_eval) ──
+        # ── GENERIC TABLE RENDERER ────────────────────────────────────────
         elif ctype in ('interaction_paradigm_table','ethical_framework_matrix','heuristic_evaluation_table'):
             headers = data.get('headers', ['Column 1','Column 2','Column 3','Column 4'])
             rows_data = data.get('rows', [])
@@ -512,23 +501,12 @@ for ctype, spec in ai_types.items():
             fig_h = max(3.5, len(rows_data) * 0.8 + 1.5)
             fig, ax = plt.subplots(figsize=(fig_w, fig_h))
             ax.axis('off'); fig.patch.set_facecolor('#FDFEFE')
-            tbl = ax.table(
-                cellText=rows_data,
-                colLabels=headers,
-                cellLoc='center', loc='center',
-                colWidths=[1.0/n_cols]*n_cols
-            )
-            tbl.auto_set_font_size(False)
-            tbl.set_fontsize(8.5)
-            tbl.scale(1, 1.9)
+            tbl = ax.table(cellText=rows_data, colLabels=headers, cellLoc='center', loc='center', colWidths=[1.0/n_cols]*n_cols)
+            tbl.auto_set_font_size(False); tbl.set_fontsize(8.5); tbl.scale(1, 1.9)
             for (r, c), cell in tbl.get_celld().items():
-                if r == 0:
-                    cell.set_facecolor(NAVY)
-                    cell.set_text_props(color='white', fontweight='bold')
-                elif r % 2 == 0:
-                    cell.set_facecolor('#EBF0F8')
-                else:
-                    cell.set_facecolor('#FFFFFF')
+                if r == 0: cell.set_facecolor(NAVY); cell.set_text_props(color='white', fontweight='bold')
+                elif r % 2 == 0: cell.set_facecolor('#EBF0F8')
+                else: cell.set_facecolor('#FFFFFF')
                 cell.set_edgecolor('#BDC3C7')
             ax.set_title(title, fontsize=11, fontweight='bold', pad=14, color=NAVY)
             plt.tight_layout()
@@ -566,10 +544,12 @@ for name in manifest: print(f"CHART:{name}")
 // ── /export-docx ──────────────────────────────────────────────────────────────
 app.post('/export-docx', (req, res) => {
     const {
-        executionId, studentName, studentId, programme, university,
+        studentName, studentId, programme, university,
         submissionDate, workableTask, totalWordCount, targetWordCount, docSections,
         fontName, fontSize, lineSpacing, marginsCm
     } = req.body;
+    // SECURITY: sanitize executionId
+    const executionId = String(req.body.executionId || '').replace(/[^a-zA-Z0-9_\-]/g, '');
 
     const FONT     = (fontName && fontName.trim()) || 'Arial';
     const FSIZE_HX = Math.round((parseFloat(fontSize) || 12) * 2);
@@ -725,11 +705,8 @@ app.post('/export-docx', (req, res) => {
         for (const para of (raw||'').split(/\n\n+/)) {
             let t = para.trim();
             if (!t) continue;
-            // Strip any remaining markdown bold **text**
             t = t.replace(/\*\*(.+?)\*\*/g, '$1');
-            // Strip markdown headers
             t = t.replace(/^#{1,4}\s+/, '');
-
             if (/^Equation\s+\d+\s*[—–\-]/i.test(t) || t.startsWith('[EQUATION]')) {
                 els.push(new Paragraph({
                     alignment:AlignmentType.CENTER, spacing:{line:LSPACING,before:160,after:160},
@@ -742,9 +719,7 @@ app.post('/export-docx', (req, res) => {
                 if (tbl) { els.push(tbl); els.push(blk(60,60)); continue; }
             }
             if (t.startsWith('## ')) { els.push(h2(t.replace(/^##\s*/,''))); continue; }
-            // Numbered subheading: "3.1 Title" or "3.1  Title"
             if (/^\d+\.\d+[\s]+\w/.test(t) && t.length<120) { els.push(h2(t)); continue; }
-            // Also catch "1. Title" style (single-level numbered heading from GPT)
             if (/^\d+\.\s+[A-Z]\w/.test(t) && t.length<120 && !t.includes('.') ) { els.push(h2(t)); continue; }
             if (/^Source:/i.test(t)) { els.push(mkP([tr(t,{size:SZ_XS,italic:true,color:'666666'})],{left:true,before:0,after:120})); continue; }
             if (/^(Table|Figure)\s+\d+/i.test(t) && t.length<200) { els.push(mkP([tr(t,{size:SZ_SM,bold:true,color:'333333'})],{left:true,before:80,after:40})); continue; }
@@ -771,11 +746,9 @@ app.post('/export-docx', (req, res) => {
         const schoolDept = workableTask?.school_department || '';
         const refStyle = workableTask?.referencing_style || 'Harvard';
 
-        // ── COVER PAGE ────────────────────────────────────────────────
         const uniName = sv(university);
         const cover = [
             blk(), blk(),
-            // University — only show if actually provided, otherwise skip
             ...(uniName ? [mkP([tr(uniName.toUpperCase(),{bold:true,size:SZ_H1+6,color:'1F3864'})],{center:true,after:40})] : []),
             ...(schoolDept ? [mkP([tr(schoolDept,{size:FSIZE_HX,color:'444444'})],{center:true,after:200})] : [blk(0,160)]),
             blk(), blk(),
@@ -795,7 +768,6 @@ app.post('/export-docx', (req, res) => {
             new Paragraph({ children: [new PageBreak()] })
         ];
 
-        // ── TOC ───────────────────────────────────────────────────────
         let TSType, TSLeader;
         try { ({TabStopType:TSType, TabStopLeader:TSLeader} = require('docx')); } catch(e) {}
         const tocItems = (docSections||[]).map(s => {
@@ -807,7 +779,6 @@ app.post('/export-docx', (req, res) => {
             });
         });
 
-        // ── MAIN CONTENT ──────────────────────────────────────────────
         const main = [];
         for (const sec of (docSections||[])) {
             const tl = (sec.title||'').toLowerCase();
@@ -877,7 +848,9 @@ app.post('/export-docx', (req, res) => {
 });
 
 app.post('/cleanup', (req, res) => {
-    try { const d=`/tmp/charts_${req.body.executionId}`; if(fs.existsSync(d)) fs.rmSync(d,{recursive:true,force:true}); } catch(e) {}
+    // SECURITY: sanitize executionId
+    const executionId = String(req.body.executionId || '').replace(/[^a-zA-Z0-9_\-]/g, '');
+    try { const d=`/tmp/charts_${executionId}`; if(fs.existsSync(d)) fs.rmSync(d,{recursive:true,force:true}); } catch(e) {}
     res.json({stdout:'OK',stderr:'',returncode:0});
 });
 
